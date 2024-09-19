@@ -1,0 +1,1 @@
+{"filename": "builds\\412ac1385dadce57d1eb4b85a8f5ae39c59280c0341fa08464b9b80100d306cb.zip", "runtime": "nodejs20.x", "artifacts_dir": "builds", "build_plan": [["npm", "nodejs20.x", "./src/get_user_by_id\\package.json", null, null], ["zip", "./src/get_user_by_id", null]]}
