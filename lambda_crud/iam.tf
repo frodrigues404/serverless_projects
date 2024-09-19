@@ -7,6 +7,15 @@ resource "aws_lambda_permission" "allow_apigateway_invoke" {
   source_account = data.aws_caller_identity.current.account_id
 }
 
+resource "aws_lambda_permission" "random_user_allow_apigateway_invoke" {
+  statement_id   = "AllowAPIGatewayInvoke"
+  action         = "lambda:InvokeFunction"
+  function_name  = module.random_user.lambda_function_name
+  principal      = "apigateway.amazonaws.com"
+  source_arn     = "${module.api_gateway.api_execution_arn}/*"
+  source_account = data.aws_caller_identity.current.account_id
+}
+
 resource "aws_lambda_permission" "post_allow_apigateway_invoke" {
   statement_id   = "AllowAPIGatewayInvoke"
   action         = "lambda:InvokeFunction"

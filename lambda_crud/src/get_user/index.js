@@ -1,15 +1,17 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import AWSXRay from 'aws-xray-sdk'
 
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+const AWS_REGION = process.env.REGION;
+const client = new DynamoDBClient({ region: AWS_REGION });
+const ddb = AWSXRay.captureAWSv3Client(client);
+const docClient = DynamoDBDocumentClient.from(ddb);
 const TABLE_NAME = process.env.TABLE_NAME;
 export const handler = async () => {
-  const secret = await get_secret();
 
   const command = new ScanCommand({
-    ProjectionExpression: "ID, CUSTOMER_NAME",
-    TableName: secret.TABLE_NAME,
+    ProjectionExpression: "USERNAME, CUSTOMER_FIRST_NAME, COSTUMER_LAST_NAME",
+    TableName: TABLE_NAME,
   });
 
   try {

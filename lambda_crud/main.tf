@@ -26,6 +26,7 @@ module "get_user" {
 
   environment_variables = {
     TABLE_NAME = module.dynamodb_table.dynamodb_table_id
+    REGION     = var.region
   }
 
   # allowed_triggers = {
@@ -61,6 +62,44 @@ module "get_user" {
 EOF
 
   source_path = "./src/get_user"
+
+  tags = local.common_tags
+}
+
+module "random_user" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
+  function_name      = "lambda_create_random_user"
+  description        = "Return a random user"
+  handler            = "index.handler"
+  runtime            = "nodejs20.x"
+  attach_policy_json = true
+
+  environment_variables = {
+    REGION     = var.region
+    TABLE_NAME = module.dynamodb_table.dynamodb_table_id
+  }
+
+  policy_json = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:Scan",
+                "dynamodb:UpdateItem"
+            ],
+            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+        }
+    ]
+}
+EOF
+
+  source_path = "./src/random_user"
 
   tags = local.common_tags
 }
@@ -188,6 +227,11 @@ module "api_gateway" {
     "GET /" = {
       integration = {
         uri = module.get_user.lambda_function_arn
+      }
+    },
+    "GET /random" = {
+      integration = {
+        uri = module.random_user.lambda_function_arn
       }
     },
     "GET /{id}" = {
