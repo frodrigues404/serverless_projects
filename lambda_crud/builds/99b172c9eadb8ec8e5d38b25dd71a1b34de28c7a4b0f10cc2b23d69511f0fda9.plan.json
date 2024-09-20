@@ -1,1 +1,0 @@
-{"filename": "builds\\99b172c9eadb8ec8e5d38b25dd71a1b34de28c7a4b0f10cc2b23d69511f0fda9.zip", "runtime": "nodejs20.x", "artifacts_dir": "builds", "build_plan": [["npm", "nodejs20.x", "./src/delete_user\\package.json", null, null], ["zip", "./src/delete_user", null]]}

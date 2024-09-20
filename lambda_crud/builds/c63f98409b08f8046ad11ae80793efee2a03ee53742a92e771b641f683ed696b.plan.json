@@ -1,1 +1,0 @@
-{"filename": "builds\\c63f98409b08f8046ad11ae80793efee2a03ee53742a92e771b641f683ed696b.zip", "runtime": "nodejs20.x", "artifacts_dir": "builds", "build_plan": [["npm", "nodejs20.x", "./src/post_items\\package.json", null, null], ["zip", "./src/post_items", null]]}

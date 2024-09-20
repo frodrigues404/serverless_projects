@@ -15,6 +15,16 @@ module "dynamodb_table" {
   tags = local.common_tags
 }
 
+module "sqs" {
+  source  = "terraform-aws-modules/sqs/aws"
+  version = "4.2.0"
+
+  name       = "userinfo"
+  fifo_queue = false
+
+  tags = local.common_tags
+}
+
 module "get_user" {
   source             = "terraform-aws-modules/lambda/aws"
   version            = "7.9.0"
@@ -28,13 +38,6 @@ module "get_user" {
     TABLE_NAME = module.dynamodb_table.dynamodb_table_id
     REGION     = var.region
   }
-
-  # allowed_triggers = {
-  #   APIGatewayAny = {
-  #     service    = "apigateway"
-  #     source_arn = "arn:aws:execute-api:${var.region}:${data.aws_caller_identity.current.account_id}:aqnku8akd0/*/*/*"
-  #   }
-  # }
 
   policy_json = <<EOF
 {
@@ -77,8 +80,8 @@ module "random_user" {
   attach_policy_json = true
 
   environment_variables = {
-    REGION     = var.region
-    TABLE_NAME = module.dynamodb_table.dynamodb_table_id
+    REGION        = var.region
+    SQS_QUEUE_URL = module.sqs.queue_url
   }
 
   policy_json = <<EOF
@@ -94,6 +97,13 @@ module "random_user" {
                 "dynamodb:UpdateItem"
             ],
             "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:SendMessage"
+            ],
+            "Resource": "${module.sqs.queue_arn}"
         }
     ]
 }
@@ -102,6 +112,68 @@ EOF
   source_path = "./src/random_user"
 
   tags = local.common_tags
+}
+
+module "register_random_user" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
+  function_name                           = "lambda_register_random_user"
+  description                             = "Register a random user"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  create_current_version_allowed_triggers = false
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+
+  environment_variables = {
+    REGION        = var.region
+    SQS_QUEUE_URL = module.sqs.queue_url
+  }
+
+  allowed_triggers = {
+    ScanAmiRule = {
+      principal  = "sqs.amazonaws.com"
+      source_arn = module.sqs.queue_arn
+    }
+  }
+
+  event_source_mapping = {
+    sqs = {
+      event_source_arn = module.sqs.queue_arn
+    }
+  }
+
+  policy_json = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:Scan",
+                "dynamodb:UpdateItem"
+            ],
+            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+            ],
+            "Resource": "${module.sqs.queue_arn}"
+        }
+    ]
+}
+EOF
+
+  source_path = "./src/register_random_user"
+  tags        = local.common_tags
 }
 
 module "get_user_by_id" {
@@ -213,13 +285,11 @@ EOF
 }
 
 module "api_gateway" {
-  source        = "terraform-aws-modules/apigateway-v2/aws"
-  version       = "5.2.0"
-  name          = "lambda-crud"
-  description   = "Serveless CRUD project"
-  protocol_type = "HTTP"
-  # hosted_zone_name      = keys(module.route53_zones.route53_zone_zone_id)[0]
-  # domain_name           = var.domain_name
+  source                = "terraform-aws-modules/apigateway-v2/aws"
+  version               = "5.2.0"
+  name                  = "lambda-crud"
+  description           = "Serveless CRUD project"
+  protocol_type         = "HTTP"
   create_certificate    = false
   create_domain_name    = false
   create_domain_records = false
@@ -229,7 +299,7 @@ module "api_gateway" {
         uri = module.get_user.lambda_function_arn
       }
     },
-    "POST /random" = {
+    "GET /random" = {
       integration = {
         uri = module.random_user.lambda_function_arn
       }

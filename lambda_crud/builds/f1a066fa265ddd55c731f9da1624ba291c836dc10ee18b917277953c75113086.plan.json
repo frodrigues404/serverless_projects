@@ -1,1 +1,0 @@
-{"filename": "builds\\f1a066fa265ddd55c731f9da1624ba291c836dc10ee18b917277953c75113086.zip", "runtime": "nodejs20.x", "artifacts_dir": "builds", "build_plan": [["npm", "nodejs20.x", "./src/create_user\\package.json", null, null], ["zip", "./src/create_user", null]]}

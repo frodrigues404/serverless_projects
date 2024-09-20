@@ -1,8 +1,9 @@
 terraform {
   backend "s3" {
-    bucket = "fernando.rodrigues-tfstates"
-    key    = "serverless-project/terraform.tfstate"
-    region = "us-east-1"
+    bucket  = "fernando.rodrigues-tfstates"
+    key     = "serverless-project/terraform.tfstate"
+    region  = "us-east-1"
+    profile = "pessoal"
   }
   required_providers {
     aws = {
@@ -13,5 +14,6 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  profile = "pessoal"
+  region  = "us-east-1"
 }
