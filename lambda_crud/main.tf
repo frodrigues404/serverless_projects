@@ -26,17 +26,27 @@ module "sqs" {
 }
 
 module "get_user" {
-  source             = "terraform-aws-modules/lambda/aws"
-  version            = "7.9.0"
-  function_name      = "lambda_get_user"
-  description        = "Get items from DynamoDB"
-  handler            = "index.handler"
-  runtime            = "nodejs20.x"
-  attach_policy_json = true
+  source                                  = "terraform-aws-modules/lambda/aws"
+  version                                 = "7.9.0"
+  function_name                           = "lambda_get_user"
+  description                             = "Get items from DynamoDB"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
 
   environment_variables = {
     TABLE_NAME = module.dynamodb_table.dynamodb_table_id
     REGION     = var.region
+  }
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
   }
 
   policy_json = <<EOF
@@ -69,19 +79,29 @@ EOF
   tags = local.common_tags
 }
 
-module "random_user" {
+module "create_random_user" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
-  function_name      = "lambda_create_random_user"
-  description        = "Return a random user"
-  handler            = "index.handler"
-  runtime            = "nodejs20.x"
-  attach_policy_json = true
+  function_name                           = "lambda_create_random_user"
+  description                             = "Return a random user"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
 
   environment_variables = {
     REGION        = var.region
     SQS_QUEUE_URL = module.sqs.queue_url
+  }
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
   }
 
   policy_json = <<EOF
@@ -177,17 +197,27 @@ EOF
 }
 
 module "get_user_by_id" {
-  source             = "terraform-aws-modules/lambda/aws"
-  version            = "7.9.0"
-  function_name      = "lambda_get_user_by_id"
-  description        = "Get items By ID from DynamoDB"
-  handler            = "index.handler"
-  runtime            = "nodejs20.x"
-  attach_policy_json = true
+  source                                  = "terraform-aws-modules/lambda/aws"
+  version                                 = "7.9.0"
+  function_name                           = "lambda_get_user_by_id"
+  description                             = "Get items By ID from DynamoDB"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
 
   environment_variables = {
     TABLE_NAME = module.dynamodb_table.dynamodb_table_id
     KEY_NAME   = "id"
+  }
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
   }
 
   policy_json = <<EOF
@@ -212,17 +242,27 @@ EOF
 }
 
 module "delete_user_by_id" {
-  source             = "terraform-aws-modules/lambda/aws"
-  version            = "7.9.0"
-  function_name      = "lambda_delete_user_by_id"
-  description        = "Delete items By ID from DynamoDB"
-  handler            = "index.handler"
-  runtime            = "nodejs20.x"
-  attach_policy_json = true
+  source                                  = "terraform-aws-modules/lambda/aws"
+  version                                 = "7.9.0"
+  function_name                           = "lambda_delete_user_by_id"
+  description                             = "Delete items By ID from DynamoDB"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
 
   environment_variables = {
     TABLE_NAME = module.dynamodb_table.dynamodb_table_id
     KEY_NAME   = "id"
+  }
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
   }
 
   policy_json = <<EOF
@@ -250,15 +290,25 @@ module "create_user" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
-  function_name      = "lambda_create_user"
-  description        = "Post items from DynamoDB"
-  handler            = "index.handler"
-  runtime            = "nodejs20.x"
-  attach_policy_json = true
+  function_name                           = "lambda_create_user"
+  description                             = "Post items from DynamoDB"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
 
   environment_variables = {
     TABLE_NAME            = module.dynamodb_table.dynamodb_table_id
     LAMBDA_GET_USER_BY_ID = module.get_user_by_id.lambda_function_name
+  }
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
   }
 
   policy_json = <<EOF
@@ -301,7 +351,7 @@ module "api_gateway" {
     },
     "GET /random" = {
       integration = {
-        uri = module.random_user.lambda_function_arn
+        uri = module.create_random_user.lambda_function_arn
       }
     },
     "GET /{id}" = {

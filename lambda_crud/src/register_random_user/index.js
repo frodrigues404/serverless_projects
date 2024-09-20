@@ -17,7 +17,7 @@ export const handler = async (event) => {
     AWSXRay.setSegment(segment);
     subsegment = segment.addNewSubsegment("DynamoDB Register");
 
-    const messageBody = JSON.parse(event.Records[0].body);  // Acessando o corpo da mensagem
+    const messageBody = JSON.parse(event.Records[0].body);  
     console.log("Username: ", messageBody.username);
     const command = new PutCommand({
       TableName: TABLE_NAME,
@@ -32,7 +32,7 @@ export const handler = async (event) => {
     });
 
     try {
-      await docClient.send(command);  // Removido o uso de .promise()
+      await docClient.send(command);  
       subsegment.close();
     } catch (err) {
       if (err.name === "ConditionalCheckFailedException") {
@@ -42,7 +42,7 @@ export const handler = async (event) => {
       subsegment.close();
     }
 
-    segment.close();  // Fechar o segmento do X-Ray
+    segment.close();  
   } catch (error) {
     if (subsegment) {
       subsegment.addError(error);
