@@ -6,15 +6,17 @@ const docClient = DynamoDBDocumentClient.from(client);
 const tableName = process.env.TABLE_NAME;
 
 export const handler = async (event) => {
-  const { username, firstName, lastName, age } = JSON.parse(event.body);
+  const { username, firstName, email, phone } = JSON.parse(event.body);
+
+  console.log(event);
 
   const command = new PutCommand({
     TableName: tableName,
     Item: {
       USERNAME: username ,
       CUSTOMER_FIRST_NAME: firstName ,
-      CUSTOMER_LAST_NAME: lastName,
-      CUSTOMER_AGE: age,
+      CUSTOMER_EMAIL: email,
+      CUSTOMER_PHONE: phone,
     },
     ConditionExpression: "attribute_not_exists(USERNAME)",
   });

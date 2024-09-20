@@ -2,7 +2,7 @@ module "dynamodb_table" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.1.0"
 
-  name     = "user"
+  name     = "users"
   hash_key = "USERNAME"
 
   attributes = [
@@ -355,7 +355,7 @@ module "api_gateway" {
         uri = module.create_random_user.lambda_function_arn
       }
     },
-    "GET /{id}" = {
+    "GET /{username}" = {
       integration = {
         uri = module.get_user_by_id.lambda_function_arn
       }
@@ -365,9 +365,9 @@ module "api_gateway" {
         uri = module.create_user.lambda_function_arn
       }
     },
-    "DELETE /{id}" = {
+    "DELETE /{username}" = {
       integration = {
-        uri = module.create_user.lambda_function_arn
+        uri = module.delete_user_by_id.lambda_function_arn
       }
     }
   }

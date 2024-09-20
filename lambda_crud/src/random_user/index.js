@@ -32,6 +32,7 @@ export const handler = async () => {
       name: randomUser.name.first,
       email: randomUser.email,
       phone: randomUser.phone,
+      age: randomUser.dob.age,
       picture: randomUser.picture.large,
     };
 

@@ -10,11 +10,13 @@ const TABLE_NAME = process.env.TABLE_NAME;
 
 export const handler = async (event) => {
   let subsegment;
-  const traceId = event.Records[0].messageAttributes.TraceId.stringValue;
 
   try {
+    const traceId = event.Records[0].messageAttributes.TraceId.stringValue;
+
     const segment = new AWSXRay.Segment("SQSConsumer", traceId);
     AWSXRay.setSegment(segment);
+
     subsegment = segment.addNewSubsegment("DynamoDB Register");
 
     const messageBody = JSON.parse(event.Records[0].body);  
@@ -26,6 +28,7 @@ export const handler = async (event) => {
         CUSTOMER_FIRST_NAME: messageBody.name,
         CUSTOMER_EMAIL: messageBody.email,
         CUSTOMER_PHONE: messageBody.phone,
+        CUSTOMER_AGE: messageBody.age,
         CUSTOMER_PICTURE: messageBody.picture,
       },
       ConditionExpression: "attribute_not_exists(USERNAME)",
@@ -33,20 +36,21 @@ export const handler = async (event) => {
 
     try {
       await docClient.send(command);
-      subsegment.close();
+      subsegment.close(); 
     } catch (err) {
       if (err.name === "ConditionalCheckFailedException") {
         console.log("Username já está em uso");
       }
-      subsegment.addError(err);
+      subsegment.addError(err); 
       subsegment.close();
     }
 
-    segment.close();  
+    segment.close(); 
   } catch (error) {
     if (subsegment) {
       subsegment.addError(error);
+      subsegment.close();
     }
-    console.log(error);
+    console.error(error);
   }
 };
