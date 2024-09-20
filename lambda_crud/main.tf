@@ -150,6 +150,7 @@ module "register_random_user" {
   environment_variables = {
     REGION        = var.region
     SQS_QUEUE_URL = module.sqs.queue_url
+    TABLE_NAME    = module.dynamodb_table.dynamodb_table_id
   }
 
   allowed_triggers = {

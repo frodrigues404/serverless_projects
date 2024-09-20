@@ -18,7 +18,7 @@ export const handler = async (event) => {
     subsegment = segment.addNewSubsegment("DynamoDB Register");
 
     const messageBody = JSON.parse(event.Records[0].body);  
-    console.log("Username: ", messageBody.username);
+  
     const command = new PutCommand({
       TableName: TABLE_NAME,
       Item: {
@@ -32,7 +32,7 @@ export const handler = async (event) => {
     });
 
     try {
-      await docClient.send(command);  
+      await docClient.send(command);
       subsegment.close();
     } catch (err) {
       if (err.name === "ConditionalCheckFailedException") {
