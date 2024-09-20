@@ -229,7 +229,7 @@ module "api_gateway" {
         uri = module.get_user.lambda_function_arn
       }
     },
-    "GET /random" = {
+    "POST /random" = {
       integration = {
         uri = module.random_user.lambda_function_arn
       }
