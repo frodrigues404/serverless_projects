@@ -251,7 +251,7 @@ module "python_lambda_layer_local" {
   layer_name               = "python-layer-local"
   description              = "Python layer for lambda"
   compatible_runtimes      = ["python3.12"]
-  compatible_architectures = ["arm64"]
+  compatible_architectures = ["x86_64"]
 
   source_path = "./src/process_image/python"
 }
