@@ -6,6 +6,7 @@ import https from "https";
 
 const sqs = AWSXRay.captureAWSClient(new AWS.SQS({ apiVersion: "2012-11-05" }));
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
+const SQS_QUEUE_URL_IMAGE = process.env.SQS_QUEUE_URL_IMAGE;
 
 AWSXRay.captureHTTPsGlobal(http);
 AWSXRay.captureHTTPsGlobal(https);
@@ -51,7 +52,29 @@ export const handler = async () => {
       MessageBody: JSON.stringify(result),
       QueueUrl: SQS_QUEUE_URL,
     };
-
+    const subsegmentSQSImage = segment.addNewSubsegment("SQS SendMessage Image");
+    const imageParams = {
+      DelaySeconds: 10,
+      MessageAttributes: {
+        Title: {
+          DataType: "String",
+          StringValue: "Random User Image",
+        },
+        TraceId: {
+          DataType: "String",
+          StringValue: AWSXRay.getSegment().trace_id,
+        },
+      },
+      MessageBody: JSON.stringify({ username: result.username, picture: result.picture }),
+      QueueUrl: SQS_QUEUE_URL_IMAGE,
+    };
+    try {
+      await sqs.sendMessage(imageParams).promise();
+      subsegmentSQSImage.close();
+    } catch (error) {
+      subsegmentSQSImage.addError(error);
+      subsegmentSQSImage.close();
+    }
     const subsegmentSQS = segment.addNewSubsegment("SQS SendMessage");
 
     try {

@@ -15,11 +15,52 @@ module "dynamodb_table" {
   tags = local.common_tags
 }
 
+module "dynamodb_image_table" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.1.0"
+
+  name     = "image_metadata"
+  hash_key = "ID"
+
+  attributes = [
+    {
+      name = "ID"
+      type = "S"
+    }
+  ]
+
+  tags = local.common_tags
+}
+
+module "user_images" {
+  source = "terraform-aws-modules/s3-bucket/aws"
+
+  bucket = "serverless-project-user-images"
+  acl    = "private"
+
+  control_object_ownership = true
+  object_ownership         = "ObjectWriter"
+
+  versioning = {
+    enabled = false
+  }
+}
+
 module "sqs" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "4.2.0"
 
   name       = "userinfo"
+  fifo_queue = false
+
+  tags = local.common_tags
+}
+
+module "sqs_image" {
+  source  = "terraform-aws-modules/sqs/aws"
+  version = "4.2.0"
+
+  name       = "userimage"
   fifo_queue = false
 
   tags = local.common_tags
@@ -93,8 +134,9 @@ module "create_random_user" {
   create_current_version_allowed_triggers = false
 
   environment_variables = {
-    REGION        = var.region
-    SQS_QUEUE_URL = module.sqs.queue_url
+    REGION              = var.region
+    SQS_QUEUE_URL       = module.sqs.queue_url
+    SQS_QUEUE_URL_IMAGE = module.sqs_image.queue_url
   }
 
   allowed_triggers = {
@@ -123,7 +165,10 @@ module "create_random_user" {
             "Action": [
                 "sqs:SendMessage"
             ],
-            "Resource": "${module.sqs.queue_arn}"
+            "Resource": [
+              "${module.sqs.queue_arn}",
+              "${module.sqs_image.queue_arn}"
+            ]
         }
     ]
 }
@@ -194,6 +239,70 @@ module "register_random_user" {
 EOF
 
   source_path = "./src/register_random_user"
+  tags        = local.common_tags
+}
+
+module "register_random_user_image" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
+  function_name                           = "lambda_register_random_user_image"
+  description                             = "Register a random user image in S3 and DynamoDB"
+  handler                                 = "main.lambda_handler"
+  runtime                                 = "python3.12"
+  attach_policy_json                      = true
+  create_current_version_allowed_triggers = false
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+
+  environment_variables = {
+    REGION        = var.region
+    SQS_QUEUE_URL = module.sqs_image.queue_url
+    TABLE_NAME    = module.dynamodb_image_table.dynamodb_table_id
+    BUCKET_NAME   = module.user_images.s3_bucket_arn
+  }
+
+  allowed_triggers = {
+    ScanAmiRule = {
+      principal  = "sqs.amazonaws.com"
+      source_arn = module.sqs_image.queue_arn
+    }
+  }
+
+  event_source_mapping = {
+    sqs = {
+      event_source_arn = module.sqs_image.queue_arn
+    }
+  }
+
+  policy_json = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:Scan",
+                "dynamodb:UpdateItem"
+            ],
+            "Resource": "${module.dynamodb_image_table.dynamodb_table_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+            ],
+            "Resource": "${module.sqs_image.queue_arn}"
+        }
+    ]
+}
+EOF
+
+  source_path = "./src/process_image"
   tags        = local.common_tags
 }
 
