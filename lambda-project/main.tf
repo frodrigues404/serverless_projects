@@ -242,36 +242,18 @@ EOF
   tags        = local.common_tags
 }
 
-module "python_lambda_layer_local" {
-  source  = "terraform-aws-modules/lambda/aws"
-  version = "7.9.0"
-
-  create_layer = true
-
-  layer_name               = "python-layer-local"
-  description              = "Python layer for lambda"
-  compatible_runtimes      = ["python3.12"]
-  compatible_architectures = ["x86_64"]
-
-  source_path = "./src/process_image/python"
-}
-
 module "register_random_user_image" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
   function_name                           = "lambda_register_random_user_image"
   description                             = "Register a random user image in S3 and DynamoDB"
-  handler                                 = "main.lambda_handler"
-  runtime                                 = "python3.12"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
   attach_policy_json                      = true
   create_current_version_allowed_triggers = false
   tracing_mode                            = "Active"
   attach_tracing_policy                   = true
-
-  layers = [
-    module.python_lambda_layer_local.lambda_layer_arn
-  ]
 
   timeout = 10
 
@@ -317,6 +299,13 @@ module "register_random_user_image" {
                 "sqs:GetQueueAttributes"
             ],
             "Resource": "${module.sqs_image.queue_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject"
+            ],
+            "Resource": "${module.user_images.s3_bucket_arn}/*"
         }
     ]
 }
