@@ -1,30 +1,33 @@
-import os
 import boto3
-import requests
+import urllib.request
+import os
+import json
 from urllib.parse import urlparse
 
-BUCKET_NAME = os.environ['BUCKET_NAME']
+bucket_name = os.environ['BUCKET_NAME']
 
 def lambda_handler(event, context):
-    image_url = event.body.picture
-    if not image_url:
-        return {
-            'statusCode': 400,
-            'body': 'URL da imagem não fornecida.'
-        }
-
     try:
+        # Extrai a URL da imagem do evento
+        print("Event: ", event)
+        
+        # Acessa o primeiro registro no evento SQS
+        record = event['Records'][0]
+        
+        # O body da mensagem SQS é uma string, então fazemos o parsing
+        message_body = json.loads(record['body'])
+        
+        # Agora podemos acessar a URL da imagem no campo "picture"
+        image_url = message_body['picture']
+        print("Image URL: ", image_url)
+
         # Faz o download da imagem
-        response = requests.get(image_url)
-        response.raise_for_status()
-        image_data = response.content
+        response = urllib.request.urlopen(image_url)
+        image_data = response.read()
 
         # Extrai o nome do arquivo da URL
         parsed_url = urlparse(image_url)
         file_name = parsed_url.path.split('/')[-1]
-
-        # Define o nome do bucket S3
-        bucket_name = BUCKET_NAME
 
         # Faz o upload para o S3
         s3 = boto3.client('s3')
@@ -34,13 +37,8 @@ def lambda_handler(event, context):
             'statusCode': 200,
             'body': f'Imagem {file_name} enviada com sucesso para o bucket {bucket_name}.'
         }
-    except requests.exceptions.RequestException as e:
-        return {
-            'statusCode': 500,
-            'body': f'Erro ao baixar a imagem: {str(e)}'
-        }
     except Exception as e:
         return {
             'statusCode': 500,
-            'body': f'Erro ao enviar a imagem para o S3: {str(e)}'
+            'body': f'Erro ao processar a imagem: {str(e)}'
         }

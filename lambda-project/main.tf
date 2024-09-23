@@ -242,6 +242,20 @@ EOF
   tags        = local.common_tags
 }
 
+module "python_lambda_layer_local" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
+  create_layer = true
+
+  layer_name               = "python-layer-local"
+  description              = "Python layer for lambda"
+  compatible_runtimes      = ["python3.12"]
+  compatible_architectures = ["arm64"]
+
+  source_path = "./src/process_image/python"
+}
+
 module "register_random_user_image" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
@@ -254,6 +268,12 @@ module "register_random_user_image" {
   create_current_version_allowed_triggers = false
   tracing_mode                            = "Active"
   attach_tracing_policy                   = true
+
+  layers = [
+    module.python_lambda_layer_local.lambda_layer_arn
+  ]
+
+  timeout = 10
 
   environment_variables = {
     REGION        = var.region
