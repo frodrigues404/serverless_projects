@@ -261,7 +261,7 @@ module "register_random_user_image" {
     REGION        = var.region
     SQS_QUEUE_URL = module.sqs_image.queue_url
     TABLE_NAME    = module.dynamodb_image_table.dynamodb_table_id
-    BUCKET_NAME   = module.user_images.s3_bucket_arn
+    BUCKET_NAME   = module.user_images.s3_bucket_id
   }
 
   allowed_triggers = {

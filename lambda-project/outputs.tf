@@ -5,3 +5,7 @@ output "dynamodb_table_arn" {
 output "api_gateway_url" {
   value = module.api_gateway.api_endpoint
 }
+
+output "user_images-s3_bucket_arn" {
+  value = module.user_images.s3_bucket_arn
+}
