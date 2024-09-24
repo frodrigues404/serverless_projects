@@ -4,35 +4,41 @@ import AWS from "aws-sdk";
 import http from "http";
 import https from "https";
 
-const instance = axios.create({
+const axiosInstance = axios.create({
   httpAgent: new http.Agent({ keepAlive: true }),
   httpsAgent: new https.Agent({ keepAlive: true }),
 });
 
-const randomUser = async (apiUrl) => {
-  const response = await instance.get(apiUrl);
-  return response.data.results[0];
-}
-
 export const handler = async () => {
   const apiUrl = "https://randomuser.me/api/";
-  const sqs = AWSXRay.captureAWSClient(new AWS.SQS({ apiVersion: "2012-11-05" }));
-  const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
-  const SQS_QUEUE_URL_IMAGE = process.env.SQS_QUEUE_URL_IMAGE;
-  
+  const { SQS_QUEUE_URL, SQS_QUEUE_URL_IMAGE } = process.env;
   AWSXRay.captureHTTPsGlobal(http);
   AWSXRay.captureHTTPsGlobal(https);
   AWSXRay.capturePromise();
-  
 
+  const sqs = AWSXRay.captureAWSClient(new AWS.SQS({ apiVersion: "2012-11-05" }));
   const segment = AWSXRay.getSegment();
-  const subsegment = segment.addNewSubsegment("External API: randomuser.me");
-  const randomUser = await randomUser(apiUrl).promise();
-  // const response = await instance.get(apiUrl);
-  // const randomUser = response.data.results[0];
-  subsegment.addAnnotation("HTTP Status", response.status);
-  subsegment.close();
-  
+
+  if (!segment) {
+    console.error("Failed to get X-Ray segment");
+    return;
+  }
+
+  let randomUser;
+  const apiSubsegment = segment.addNewSubsegment("External API: randomuser.me");
+  try {
+    const response = await axiosInstance.get(apiUrl);
+    apiSubsegment.addAnnotation("HTTP Status", response.status);
+    randomUser = response.data.results[0];
+  } catch (error) {
+    apiSubsegment.addError(error);
+    console.log("Error fetching random user:", error);
+    throw error;
+  } finally {
+    apiSubsegment.close();
+  }
+
+  // Extract required user data
   const result = {
     username: randomUser.login.username,
     name: randomUser.name.first,
@@ -42,52 +48,68 @@ export const handler = async () => {
     picture: randomUser.picture.large,
   };
 
-  const subsegmentSQSImage = segment.addNewSubsegment("SQS SendMessage Image");
+  const traceId = segment.trace_id;
+
+  // Common message attributes
+  const commonMessageAttributes = {
+    TraceId: {
+      DataType: "String",
+      StringValue: traceId,
+    },
+  };
+
+  // Prepare SQS message parameters
   const imageParams = {
     DelaySeconds: 10,
     MessageAttributes: {
+      ...commonMessageAttributes,
       Title: {
         DataType: "String",
         StringValue: "Random User Image",
       },
-      TraceId: {
-        DataType: "String",
-        StringValue: AWSXRay.getSegment().trace_id,
-      },
     },
-    MessageBody: JSON.stringify({ username: result.username, picture: result.picture }),
+    MessageBody: JSON.stringify({
+      username: result.username,
+      picture: result.picture,
+    }),
     QueueUrl: SQS_QUEUE_URL_IMAGE,
   };
-  try {
-    await sqs.sendMessage(imageParams).promise();
-    subsegmentSQSImage.close();
-  } catch (error) {
-    subsegmentSQSImage.addError(error);
-    subsegmentSQSImage.close();
-  }
-  const subsegmentSQS = segment.addNewSubsegment("SQS SendMessage");
 
-  var params = {
+  const userParams = {
     DelaySeconds: 10,
     MessageAttributes: {
+      ...commonMessageAttributes,
       Title: {
         DataType: "String",
         StringValue: "Random User",
-      },
-      TraceId: {
-        DataType: "String",
-        StringValue: AWSXRay.getSegment().trace_id,
       },
     },
     MessageBody: JSON.stringify(result),
     QueueUrl: SQS_QUEUE_URL,
   };
 
+  // Function to send SQS messages with X-Ray subsegment
+  const sendSQSMessage = async (params, subsegmentName) => {
+    const sqsSubsegment = segment.addNewSubsegment(subsegmentName);
+    try {
+      await sqs.sendMessage(params).promise();
+    } catch (error) {
+      sqsSubsegment.addError(error);
+      console.error(`Error sending SQS message to ${params.QueueUrl}:`, error);
+      throw error;
+    } finally {
+      sqsSubsegment.close();
+    }
+  };
+
+  // Send SQS messages in parallel
   try {
-    await sqs.sendMessage(params).promise();
-    subsegmentSQS.close();
+    await Promise.all([
+      sendSQSMessage(imageParams, "SQS SendMessage Image"),
+      sendSQSMessage(userParams, "SQS SendMessage"),
+    ]);
   } catch (error) {
-    subsegmentSQS.addError(error);
-    subsegmentSQS.close();
-  } 
+    console.error("Error sending SQS messages:", error);
+    throw error;
+  }
 };

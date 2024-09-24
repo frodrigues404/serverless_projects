@@ -257,7 +257,7 @@ module "register_random_user_image" {
   tracing_mode                            = "Active"
   attach_tracing_policy                   = true
 
-  timeout = 10
+  timeout = 60
 
   environment_variables = {
     REGION        = var.region
