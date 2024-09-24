@@ -133,6 +133,8 @@ module "create_random_user" {
   attach_tracing_policy                   = true
   create_current_version_allowed_triggers = false
 
+  timeout = 10 // Depends on the external API response time
+
   environment_variables = {
     REGION              = var.region
     SQS_QUEUE_URL       = module.sqs.queue_url
