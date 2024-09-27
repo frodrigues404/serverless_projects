@@ -15,6 +15,8 @@
     "@aws-sdk/lib-dynamodb": "^3.631.0",
     "aws-sdk": "^2.1691.0",
     "aws-xray-sdk": "^3.10.1",
+    "axios": "^1.7.7",
+    "exif-parser": "^0.1.12",
     "fs": "^0.0.1-security",
     "image-downloader": "^4.3.0"
   }

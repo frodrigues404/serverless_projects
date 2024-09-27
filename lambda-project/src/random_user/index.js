@@ -38,7 +38,6 @@ export const handler = async () => {
     apiSubsegment.close();
   }
 
-  // Extract required user data
   const result = {
     username: randomUser.login.username,
     name: randomUser.name.first,
@@ -50,7 +49,6 @@ export const handler = async () => {
 
   const traceId = segment.trace_id;
 
-  // Common message attributes
   const commonMessageAttributes = {
     TraceId: {
       DataType: "String",
@@ -58,7 +56,6 @@ export const handler = async () => {
     },
   };
 
-  // Prepare SQS message parameters
   const imageParams = {
     DelaySeconds: 10,
     MessageAttributes: {
@@ -88,7 +85,6 @@ export const handler = async () => {
     QueueUrl: SQS_QUEUE_URL,
   };
 
-  // Function to send SQS messages with X-Ray subsegment
   const sendSQSMessage = async (params, subsegmentName) => {
     const sqsSubsegment = segment.addNewSubsegment(subsegmentName);
     try {
@@ -102,12 +98,15 @@ export const handler = async () => {
     }
   };
 
-  // Send SQS messages in parallel
   try {
     await Promise.all([
       sendSQSMessage(imageParams, "SQS SendMessage Image"),
       sendSQSMessage(userParams, "SQS SendMessage"),
     ]);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: "Messages sent successfully!" }),
+    };
   } catch (error) {
     console.error("Error sending SQS messages:", error);
     throw error;

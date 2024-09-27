@@ -133,7 +133,7 @@ module "create_random_user" {
   attach_tracing_policy                   = true
   create_current_version_allowed_triggers = false
 
-  timeout = 10 // Depends on the external API response time
+  timeout = 5 // Depends on the external API response time
 
   environment_variables = {
     REGION              = var.region
