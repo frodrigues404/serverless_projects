@@ -1,8 +1,6 @@
 import axios from "axios";
 import AWSXRay from "aws-xray-sdk-core";
 import AWS from "aws-sdk";
-import http from "http";
-import https from "https";
 
 const axiosInstance = axios.create({
   httpAgent: new http.Agent({ keepAlive: true }),
@@ -12,9 +10,6 @@ const axiosInstance = axios.create({
 export const handler = async () => {
   const apiUrl = "https://randomuser.me/api/";
   const { SQS_QUEUE_URL, SQS_QUEUE_URL_IMAGE } = process.env;
-  AWSXRay.captureHTTPsGlobal(http);
-  AWSXRay.captureHTTPsGlobal(https);
-  AWSXRay.capturePromise();
 
   const sqs = AWSXRay.captureAWSClient(new AWS.SQS({ apiVersion: "2012-11-05" }));
   const segment = AWSXRay.getSegment();
