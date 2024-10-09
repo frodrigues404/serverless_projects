@@ -6,8 +6,10 @@ import exifParser from "exif-parser";
 import AWSXRay from "aws-xray-sdk-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand, DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import http from "http";
+import https from "https";
 
-const client = new S3Client({});
+const s3Client = new S3Client({});
 const bucketName = process.env.BUCKET_NAME;
 const AWS_REGION = process.env.REGION;
 const dynamoClient = new DynamoDBClient({ region: AWS_REGION });
@@ -20,14 +22,65 @@ const axiosInstance = axios.create({
   httpsAgent: new https.Agent({ keepAlive: true }),
 });
 
+const validateImageType = async (imageUrl) => {
+  const headResponse = await axiosInstance.head(imageUrl);
+  const contentType = headResponse.headers["content-type"];
+  if (!contentType.startsWith("image/")) {
+    throw new Error(`Content type is not image: ${contentType}`);
+  }
+  return contentType;
+};
+
+const downloadImage = async (imageUrl) => {
+  const options = { url: imageUrl, dest: "/tmp/" };
+  const { filename } = await download.image(options);
+
+  const fileExists = await fs.access(filename).then(() => true).catch(() => false);
+  if (!fileExists) {
+    throw new Error(`File not found after download: ${filename}`);
+  }
+
+  return filename;
+};
+
+const parseExifData = (fileContent) => {
+  const parser = exifParser.create(fileContent);
+  const exifData = parser.parse();
+  return {
+    imageHeight: exifData.imageSize.height,
+    imageWidth: exifData.imageSize.width,
+  };
+};
+
+const uploadToS3 = async (bucketName, key, fileContent, contentType) => {
+  const s3Command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+    Body: fileContent,
+    ContentType: contentType,
+  });
+  return await s3Client.send(s3Command);
+};
+
+const insertIntoDynamoDB = async (tableName, username, imageHeight, imageWidth) => {
+  const dynamoCommand = new PutCommand({
+    TableName: tableName,
+    Item: {
+      ID: username,
+      HEIGHT: imageHeight,
+      WIDTH: imageWidth,
+    },
+    ConditionExpression: "attribute_not_exists(ID)",
+  });
+  return await docClient.send(dynamoCommand);
+};
+
 export const handler = async (event) => {
   const traceId = event.Records[0].messageAttributes.TraceId.stringValue;
   const body = JSON.parse(event.Records[0].body);
-  const imageUrl = body.picture;
-  const username = body.username;
+  const { picture: imageUrl, username } = body;
 
   console.log("Event received:", event);
-  console.log("Image URL:", imageUrl);
 
   const segment = new AWSXRay.Segment("ImageProcessing", traceId);
   AWSXRay.setSegment(segment);
@@ -36,80 +89,29 @@ export const handler = async (event) => {
     const imageSubsegment = segment.addNewSubsegment("Download Image");
     imageSubsegment.addMetadata("Image URL", imageUrl);
 
-    const headResponse = await axiosInstance.head(imageUrl);
-    const contentType = headResponse.headers["content-type"];
-
-    if (!contentType.startsWith("image/")) {
-      throw new Error(`Content type is not image: ${contentType}`);
-    }
-
+    const contentType = await validateImageType(imageUrl);
     console.log(`Valid image detected: ${contentType}`);
 
-    const options = {
-      url: imageUrl,
-      dest: "/tmp/",
-    };
-
-    const { filename } = await download.image(options);
-
-    const fileExists = await fs
-      .access(filename)
-      .then(() => true)
-      .catch(() => false);
-
-    if (!fileExists) {
-      throw new Error(`File not found after download: ${filename}`);
-    }
-
+    const filename = await downloadImage(imageUrl);
     const fileContent = await fs.readFile(filename);
 
-    const parser = exifParser.create(fileContent);
-    const exifData = parser.parse();
-
-    const imageHeight = exifData.imageSize.height;
-    const imageWidth = exifData.imageSize.width;
+    const { imageHeight, imageWidth } = parseExifData(fileContent);
 
     imageSubsegment.close();
 
-    const s3Command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: username,
-      Body: fileContent,
-      ContentType: contentType,
-    });
-
-    const dynamoCommand = new PutCommand({
-      TableName: TABLE_NAME,
-      Item: {
-        ID: username,
-        HEIGHT: imageHeight,
-        WIDTH: imageWidth,
-      },
-      ConditionExpression: "attribute_not_exists(USERNAME)",
-    });
-
     const s3Subsegment = segment.addNewSubsegment("Upload to S3");
-    try {
-      const response = await client.send(s3Command);
-      console.log("S3 upload response:", response);
-      s3Subsegment.close();
-    } catch (err) {
-      s3Subsegment.addError("S3 upload error: ", err);
-      console.log("Error during S3 upload:", err.message);
-    }
+    await uploadToS3(bucketName, username, fileContent, contentType);
+    s3Subsegment.close();
+    console.log("S3 upload successful.");
 
     const dynamoSubsegment = segment.addNewSubsegment("Insert into DynamoDB");
-    try {
-      await docClient.send(dynamoCommand);
-      dynamoSubsegment.close();
-    } catch (err) {
-      dynamoSubsegment.addError("Error during DynamoDB register: ", err);
-      if (err.name === "ConditionalCheckFailedException") {
-        console.log("Username already exists");
-      }
-      console.log("Error during DynamoDB insert:", err.message);
-    }
-  } catch (err) {
-    console.log("Error during image download or S3 upload:", err.message);
+    await insertIntoDynamoDB(TABLE_NAME, username, imageHeight, imageWidth);
+    dynamoSubsegment.close();
+    console.log("DynamoDB insert successful.");
+  } catch (error) {
+    segment.addError(error);
+    console.error("Error processing image:", error.message);
+  } finally {
+    segment.close();
   }
 };

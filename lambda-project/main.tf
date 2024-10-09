@@ -407,54 +407,6 @@ EOF
   tags = local.common_tags
 }
 
-module "create_user" {
-  source  = "terraform-aws-modules/lambda/aws"
-  version = "7.9.0"
-
-  function_name                           = "lambda_create_user"
-  description                             = "Post items from DynamoDB"
-  handler                                 = "index.handler"
-  runtime                                 = "nodejs20.x"
-  attach_policy_json                      = true
-  tracing_mode                            = "Active"
-  attach_tracing_policy                   = true
-  create_current_version_allowed_triggers = false
-
-  environment_variables = {
-    TABLE_NAME            = module.dynamodb_table.dynamodb_table_id
-    LAMBDA_GET_USER_BY_ID = module.get_user_by_id.lambda_function_name
-  }
-
-  allowed_triggers = {
-    APIGateway = {
-      service    = "apigateway"
-      source_arn = "${module.api_gateway.api_execution_arn}/*"
-    },
-  }
-
-  policy_json = <<EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:GetItem",
-                "dynamodb:PutItem",
-                "dynamodb:Scan",
-                "dynamodb:UpdateItem"
-            ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
-        }
-    ]
-}
-EOF
-
-  source_path = "./src/create_user"
-
-  tags = local.common_tags
-}
-
 module "api_gateway" {
   source                = "terraform-aws-modules/apigateway-v2/aws"
   version               = "5.2.0"
@@ -478,11 +430,6 @@ module "api_gateway" {
     "GET /{username}" = {
       integration = {
         uri = module.get_user_by_id.lambda_function_arn
-      }
-    },
-    "POST /" = {
-      integration = {
-        uri = module.create_user.lambda_function_arn
       }
     },
     "DELETE /{username}" = {

@@ -8,49 +8,50 @@ const ddb = AWSXRay.captureAWSv3Client(client);
 const docClient = DynamoDBDocumentClient.from(ddb);
 const TABLE_NAME = process.env.TABLE_NAME;
 
-export const handler = async (event) => {
-  let subsegment;
+const putItemInDynamoDB = async (messageBody, subsegment) => {
+  const command = new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      USERNAME: messageBody.username,
+      CUSTOMER_FIRST_NAME: messageBody.name,
+      CUSTOMER_EMAIL: messageBody.email,
+      CUSTOMER_PHONE: messageBody.phone,
+      CUSTOMER_AGE: messageBody.age,
+      CUSTOMER_PICTURE: messageBody.picture,
+    },
+    ConditionExpression: "attribute_not_exists(USERNAME)",
+  });
 
   try {
-    const traceId = event.Records[0].messageAttributes.TraceId.stringValue;
-
-    const segment = new AWSXRay.Segment("SQSConsumer", traceId);
-    AWSXRay.setSegment(segment);
-
-    subsegment = segment.addNewSubsegment("DynamoDB Register");
-
-    const messageBody = JSON.parse(event.Records[0].body);  
-  
-    const command = new PutCommand({
-      TableName: TABLE_NAME,
-      Item: {
-        USERNAME: messageBody.username,
-        CUSTOMER_FIRST_NAME: messageBody.name,
-        CUSTOMER_EMAIL: messageBody.email,
-        CUSTOMER_PHONE: messageBody.phone,
-        CUSTOMER_AGE: messageBody.age,
-        CUSTOMER_PICTURE: messageBody.picture,
-      },
-      ConditionExpression: "attribute_not_exists(USERNAME)",
-    });
-
-    try {
-      await docClient.send(command);
-      subsegment.close(); 
-    } catch (err) {
-      if (err.name === "ConditionalCheckFailedException") {
-        console.log("Username já está em uso");
-      }
-      subsegment.addError(err); 
-      subsegment.close();
+    await docClient.send(command);
+    console.log(`User ${messageBody.username} successfully added.`);
+    subsegment.close(); // Closing the subsegment on success
+  } catch (err) {
+    subsegment.addError(err); // Adding error details to the subsegment
+    subsegment.close();
+    if (err.name === "ConditionalCheckFailedException") {
+      console.log("Username already exists.");
+    } else {
+      console.error("Error inserting into DynamoDB:", err);
     }
+    throw err;
+  }
+};
 
-    segment.close(); 
+export const handler = async (event) => {
+  const traceId = event.Records[0].messageAttributes.TraceId.stringValue;
+  const messageBody = JSON.parse(event.Records[0].body);
+
+  const segment = new AWSXRay.Segment("SQSConsumer", traceId);
+  AWSXRay.setSegment(segment);
+  const subsegment = segment.addNewSubsegment("DynamoDB Register");
+
+  try {
+    await putItemInDynamoDB(messageBody, subsegment);
   } catch (error) {
-    if (subsegment) {
-      subsegment.addError(error);
-      subsegment.close();
-    }
-    console.error(error);
+    subsegment.addError(error); // Ensure the error is captured
+    console.error("Failed to process event:", error);
+  } finally {
+    segment.close(); // Ensure the segment is closed, even in case of errors
   }
 };
