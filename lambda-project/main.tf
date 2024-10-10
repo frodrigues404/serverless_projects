@@ -317,51 +317,6 @@ EOF
   tags        = local.common_tags
 }
 
-module "get_user_by_id" {
-  source                                  = "terraform-aws-modules/lambda/aws"
-  version                                 = "7.9.0"
-  function_name                           = "lambda_get_user_by_id"
-  description                             = "Get items By ID from DynamoDB"
-  handler                                 = "index.handler"
-  runtime                                 = "nodejs20.x"
-  attach_policy_json                      = true
-  tracing_mode                            = "Active"
-  attach_tracing_policy                   = true
-  create_current_version_allowed_triggers = false
-
-  environment_variables = {
-    TABLE_NAME = module.dynamodb_table.dynamodb_table_id
-    KEY_NAME   = "id"
-  }
-
-  allowed_triggers = {
-    APIGateway = {
-      service    = "apigateway"
-      source_arn = "${module.api_gateway.api_execution_arn}/*"
-    },
-  }
-
-  policy_json = <<EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:GetItem",
-                "dynamodb:Scan"
-            ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
-        }
-    ]
-}
-EOF
-
-  source_path = "./src/get_user_by_id"
-
-  tags = local.common_tags
-}
-
 module "delete_user_by_id" {
   source                                  = "terraform-aws-modules/lambda/aws"
   version                                 = "7.9.0"
@@ -425,11 +380,6 @@ module "api_gateway" {
     "GET /random" = {
       integration = {
         uri = module.create_random_user.lambda_function_arn
-      }
-    },
-    "GET /{username}" = {
-      integration = {
-        uri = module.get_user_by_id.lambda_function_arn
       }
     },
     "DELETE /{username}" = {

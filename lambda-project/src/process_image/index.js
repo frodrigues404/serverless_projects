@@ -9,7 +9,8 @@ import { PutCommand, DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import http from "http";
 import https from "https";
 
-const s3Client = new S3Client({});
+const s3 = new S3Client({});
+const s3Client = AWSXRay.captureAWSv3Client(s3);
 const bucketName = process.env.BUCKET_NAME;
 const AWS_REGION = process.env.REGION;
 const dynamoClient = new DynamoDBClient({ region: AWS_REGION });
