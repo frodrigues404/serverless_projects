@@ -1,4 +1,4 @@
-module "dynamodb_table" {
+module "dynamodb_users_table" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.1.0"
 
@@ -33,7 +33,8 @@ module "dynamodb_image_table" {
 }
 
 module "user_images" {
-  source = "terraform-aws-modules/s3-bucket/aws"
+  source  = "terraform-aws-modules/s3-bucket/aws"
+  version = "4.2.0"
 
   bucket = "serverless-project-user-images"
   acl    = "private"
@@ -50,25 +51,21 @@ module "sqs" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "4.2.0"
 
-  name       = "userinfo"
+  for_each = {
+    userinfo  = "userinfo"
+    userimage = "userimage"
+  }
+
+  name       = each.value
   fifo_queue = false
 
   tags = local.common_tags
 }
 
-module "sqs_image" {
-  source  = "terraform-aws-modules/sqs/aws"
-  version = "4.2.0"
+module "lambda_get_user" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
 
-  name       = "userimage"
-  fifo_queue = false
-
-  tags = local.common_tags
-}
-
-module "get_user" {
-  source                                  = "terraform-aws-modules/lambda/aws"
-  version                                 = "7.9.0"
   function_name                           = "lambda_get_user"
   description                             = "Get items from DynamoDB"
   handler                                 = "index.handler"
@@ -79,7 +76,7 @@ module "get_user" {
   create_current_version_allowed_triggers = false
 
   environment_variables = {
-    TABLE_NAME = module.dynamodb_table.dynamodb_table_id
+    TABLE_NAME = module.dynamodb_users_table.dynamodb_table_id
     REGION     = var.region
   }
 
@@ -100,7 +97,7 @@ module "get_user" {
                 "dynamodb:GetItem",
                 "dynamodb:Scan"
             ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+            "Resource": "${module.dynamodb_users_table.dynamodb_table_arn}"
         },
         {
             "Effect": "Allow",
@@ -120,7 +117,7 @@ EOF
   tags = local.common_tags
 }
 
-module "create_random_user" {
+module "lambda_create_random_user" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
@@ -137,8 +134,8 @@ module "create_random_user" {
 
   environment_variables = {
     REGION              = var.region
-    SQS_QUEUE_URL       = module.sqs.queue_url
-    SQS_QUEUE_URL_IMAGE = module.sqs_image.queue_url
+    SQS_QUEUE_URL       = module.sqs.userinfo.queue_url
+    SQS_QUEUE_URL_IMAGE = module.sqs.userimage.queue_url
   }
 
   allowed_triggers = {
@@ -160,7 +157,7 @@ module "create_random_user" {
                 "dynamodb:Scan",
                 "dynamodb:UpdateItem"
             ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+            "Resource": "${module.dynamodb_users_table.dynamodb_table_arn}"
         },
         {
             "Effect": "Allow",
@@ -168,8 +165,8 @@ module "create_random_user" {
                 "sqs:SendMessage"
             ],
             "Resource": [
-              "${module.sqs.queue_arn}",
-              "${module.sqs_image.queue_arn}"
+              "${module.sqs.userinfo.queue_arn}",
+              "${module.sqs.userimage.queue_arn}"
             ]
         }
     ]
@@ -181,7 +178,7 @@ EOF
   tags = local.common_tags
 }
 
-module "register_random_user" {
+module "lambda_register_random_user" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
@@ -196,20 +193,20 @@ module "register_random_user" {
 
   environment_variables = {
     REGION        = var.region
-    SQS_QUEUE_URL = module.sqs.queue_url
-    TABLE_NAME    = module.dynamodb_table.dynamodb_table_id
+    SQS_QUEUE_URL = module.sqs.userinfo.queue_url
+    TABLE_NAME    = module.dynamodb_users_table.dynamodb_table_id
   }
 
   allowed_triggers = {
     ScanAmiRule = {
       principal  = "sqs.amazonaws.com"
-      source_arn = module.sqs.queue_arn
+      source_arn = module.sqs.userinfo.queue_arn
     }
   }
 
   event_source_mapping = {
     sqs = {
-      event_source_arn = module.sqs.queue_arn
+      event_source_arn = module.sqs.userinfo.queue_arn
     }
   }
 
@@ -225,7 +222,7 @@ module "register_random_user" {
                 "dynamodb:Scan",
                 "dynamodb:UpdateItem"
             ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+            "Resource": "${module.dynamodb_users_table.dynamodb_table_arn}"
         },
         {
             "Effect": "Allow",
@@ -234,7 +231,7 @@ module "register_random_user" {
                 "sqs:DeleteMessage",
                 "sqs:GetQueueAttributes"
             ],
-            "Resource": "${module.sqs.queue_arn}"
+            "Resource": "${module.sqs.userinfo.queue_arn}"
         }
     ]
 }
@@ -244,7 +241,7 @@ EOF
   tags        = local.common_tags
 }
 
-module "register_random_user_image" {
+module "lambda_register_random_user_image" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
 
@@ -257,11 +254,9 @@ module "register_random_user_image" {
   tracing_mode                            = "Active"
   attach_tracing_policy                   = true
 
-  timeout = 60
-
   environment_variables = {
     REGION        = var.region
-    SQS_QUEUE_URL = module.sqs_image.queue_url
+    SQS_QUEUE_URL = module.sqs.userimage.queue_url
     TABLE_NAME    = module.dynamodb_image_table.dynamodb_table_id
     BUCKET_NAME   = module.user_images.s3_bucket_id
   }
@@ -269,13 +264,13 @@ module "register_random_user_image" {
   allowed_triggers = {
     ScanAmiRule = {
       principal  = "sqs.amazonaws.com"
-      source_arn = module.sqs_image.queue_arn
+      source_arn = module.sqs.userimage.queue_arn
     }
   }
 
   event_source_mapping = {
     sqs = {
-      event_source_arn = module.sqs_image.queue_arn
+      event_source_arn = module.sqs.userimage.queue_arn
     }
   }
 
@@ -300,7 +295,7 @@ module "register_random_user_image" {
                 "sqs:DeleteMessage",
                 "sqs:GetQueueAttributes"
             ],
-            "Resource": "${module.sqs_image.queue_arn}"
+            "Resource": "${module.sqs.userimage.queue_arn}"
         },
         {
             "Effect": "Allow",
@@ -317,9 +312,10 @@ EOF
   tags        = local.common_tags
 }
 
-module "delete_user_by_id" {
-  source                                  = "terraform-aws-modules/lambda/aws"
-  version                                 = "7.9.0"
+module "lambda_delete_user_by_id" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
   function_name                           = "lambda_delete_user_by_id"
   description                             = "Delete items By ID from DynamoDB"
   handler                                 = "index.handler"
@@ -330,8 +326,9 @@ module "delete_user_by_id" {
   create_current_version_allowed_triggers = false
 
   environment_variables = {
-    TABLE_NAME = module.dynamodb_table.dynamodb_table_id
-    KEY_NAME   = "id"
+    TABLE_NAME  = module.dynamodb_users_table.dynamodb_table_id
+    BUCKET_NAME = module.user_images.s3_bucket_id
+    KEY_NAME    = "id"
   }
 
   allowed_triggers = {
@@ -351,7 +348,14 @@ module "delete_user_by_id" {
                 "dynamodb:GetItem",
                 "dynamodb:DeleteItem"
             ],
-            "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
+            "Resource": "${module.dynamodb_users_table.dynamodb_table_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:DeleteObject"
+            ],
+            "Resource": "${module.user_images.s3_bucket_arn}/*"
         }
     ]
 }
@@ -363,9 +367,10 @@ EOF
 }
 
 module "api_gateway" {
-  source                = "terraform-aws-modules/apigateway-v2/aws"
-  version               = "5.2.0"
-  name                  = "lambda-crud"
+  source  = "terraform-aws-modules/apigateway-v2/aws"
+  version = "5.2.0"
+
+  name                  = "random-user"
   description           = "Serveless CRUD project"
   protocol_type         = "HTTP"
   create_certificate    = false
@@ -374,17 +379,17 @@ module "api_gateway" {
   routes = {
     "GET /" = {
       integration = {
-        uri = module.get_user.lambda_function_arn
+        uri = module.lambda_get_user.lambda_function_arn
       }
     },
     "GET /random" = {
       integration = {
-        uri = module.create_random_user.lambda_function_arn
+        uri = module.lambda_create_random_user.lambda_function_arn
       }
     },
     "DELETE /{username}" = {
       integration = {
-        uri = module.delete_user_by_id.lambda_function_arn
+        uri = module.lambda_delete_user_by_id.lambda_function_arn
       }
     }
   }
