@@ -28,3 +28,9 @@ variable "domain_name" {
   type        = string
   default     = "fernandojrlinux.net"
 }
+
+variable "authorization_token" {
+  description = "The authorization token for API Gateway requests"
+  type        = string
+  default     = "allow"
+}

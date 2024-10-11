@@ -13,3 +13,7 @@ output "image_queue_arn" {
 output "user_queue_arn" {
   value = module.sqs.userimage.queue_url
 }
+
+output "authorization_token" {
+  value = "Use the '${var.authorization_token}' token to access the API Gateway"
+}

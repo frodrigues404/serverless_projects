@@ -62,6 +62,61 @@ module "sqs" {
   tags = local.common_tags
 }
 
+module "lambda_authorizer" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "7.9.0"
+
+  function_name                           = "lambda_authorizer"
+  description                             = "Authorizer for API Gateway"
+  handler                                 = "index.handler"
+  runtime                                 = "nodejs20.x"
+  attach_policy_json                      = true
+  tracing_mode                            = "Active"
+  attach_tracing_policy                   = true
+  create_current_version_allowed_triggers = false
+
+  environment_variables = {
+    TOKEN = var.authorization_token
+  }
+
+
+  allowed_triggers = {
+    APIGateway = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.api_execution_arn}/*"
+    },
+  }
+
+  policy_json = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Scan"
+            ],
+            "Resource": "${module.dynamodb_users_table.dynamodb_table_arn}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+                "secretsmanager:ListSecrets"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+
+  source_path = "./src/authorizer"
+
+  tags = local.common_tags
+}
+
 module "lambda_get_user" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.9.0"
@@ -131,6 +186,8 @@ module "lambda_create_random_user" {
   create_current_version_allowed_triggers = false
 
   timeout = 5 // Depends on the external API response time
+
+  authorization_type = "CUSTOM"
 
   environment_variables = {
     REGION              = var.region
@@ -376,21 +433,39 @@ module "api_gateway" {
   create_certificate    = false
   create_domain_name    = false
   create_domain_records = false
+
+  authorizers = {
+    lambda = {
+      authorizer_type                   = "REQUEST"
+      authorizer_payload_format_version = "2.0"
+      identity_sources                  = ["$request.header.Authorization"]
+      name                              = "lambda_authorizer"
+      authorizer_uri                    = module.lambda_authorizer.lambda_function_invoke_arn
+    }
+  }
+
   routes = {
     "GET /" = {
       integration = {
         uri = module.lambda_get_user.lambda_function_arn
       }
+      authorizer_key     = "lambda"
+      authorization_type = "CUSTOM"
     },
     "GET /random" = {
       integration = {
         uri = module.lambda_create_random_user.lambda_function_arn
       }
+      authorizer_key     = "lambda"
+      authorization_type = "CUSTOM"
+
     },
     "DELETE /{username}" = {
       integration = {
         uri = module.lambda_delete_user_by_id.lambda_function_arn
       }
+      authorizer_key     = "lambda"
+      authorization_type = "CUSTOM"
     }
   }
 
